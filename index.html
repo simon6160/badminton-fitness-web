@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>羽球員體適能訓練管理系統</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+
+  <!-- ==================== 免帳號登入：輸入球員名字快速進入 ==================== -->
+  <div id="entryScreen" class="entry-overlay">
+    <div class="entry-card stack-md">
+      <div class="flex-row" style="gap: 12px;">
+        <div class="brand-mark">羽</div>
+        <div>
+          <h1 id="entryTeamTitle" style="margin:0; font-size:20px;">羽球專項體適能訓練中心</h1>
+          <p class="muted text-xs" style="margin:2px 0 0;">免帳號密碼！輸入名字即可查看今日課表並打卡記錄</p>
+        </div>
+      </div>
+
+      <form id="nameEntryForm" class="stack-sm">
+        <div>
+          <label class="form-label" for="entryNameInput">球員姓名（新球員輸入名字將自動建立檔案）</label>
+          <input id="entryNameInput" class="input" type="text" required placeholder="請輸入您的名字，例如：王小明" autocomplete="name" />
+        </div>
+        <div>
+          <label class="form-label" for="entryLevelSelect">體能程度分級（新球員可選，老球員自動沿用）</label>
+          <select id="entryLevelSelect" class="select">
+            <option value="youth">青少年／基礎組（徒手動作優先）</option>
+            <option value="varsity" selected>校隊／進階組（標準專項課表）</option>
+            <option value="elite">公開／競技組（高強進階負荷）</option>
+          </select>
+        </div>
+        <div class="flex-row" style="padding-top:4px;">
+          <button type="submit" class="btn btn-primary" style="flex:1;">進入球員訓練端</button>
+          <button type="button" id="enterAsCoachBtn" class="btn">直接進入教練管理端</button>
+        </div>
+      </form>
+
+      <div style="border-top:1px solid var(--border); padding-top:14px;" class="stack-sm">
+        <div class="text-xs muted" style="font-weight:600;">或直接點選現有球員名字進入：</div>
+        <div id="quickPlayerChips" class="quick-player-list"></div>
+      </div>
+
+      <div id="entrySyncBadge" class="text-xs muted" style="text-align:center;"></div>
+    </div>
+  </div>
+
+  <!-- ==================== 主系統畫面 ==================== -->
+  <div id="mainApp" class="app-shell stack-md hidden">
+    <!-- 頂部工具列 -->
+    <header class="card topbar">
+      <div class="flex-row" style="gap: 10px;">
+        <div class="brand-mark">羽</div>
+        <div>
+          <div class="flex-row" style="gap:6px;">
+            <strong id="headerTeamTitle" style="font-size:17px;">羽球專項體適能訓練中心</strong>
+            <span id="syncStatusPill" class="badge badge-primary">本機儲存模式</span>
+          </div>
+          <div class="text-xs muted">
+            目前使用者：<strong id="currentUserBadge" style="color:var(--text);"></strong>
+            <button id="switchUserBtn" class="btn btn-sm" style="margin-left:6px;">切換名字</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex-row">
+        <select id="globalLevelSelect" class="select select-inline" aria-label="球員程度"></select>
+        <button id="manualSyncBtn" class="btn btn-sm hidden">↻ 立即同步雲端</button>
+        <button id="themeToggleBtn" class="btn btn-sm" title="切換深色／淺色模式">🌙 深色</button>
+      </div>
+    </header>
+
+    <!-- 多週自動排程切換列（換週自動推進 4 週循環，每週紀錄獨立保存） -->
+    <div class="card week-bar">
+      <div class="flex-row">
+        <button id="prevWeekBtn" class="btn btn-sm" title="檢視上一週">◀ 上一週</button>
+        <select id="weekSelector" class="select select-inline mono" style="min-width:240px;" aria-label="選擇訓練週次"></select>
+        <button id="nextWeekBtn" class="btn btn-sm" title="檢視／自動排定下一週">下一週 ▶</button>
+        <button id="todayWeekBtn" class="btn btn-sm">回到本週</button>
+      </div>
+      <div class="flex-row">
+        <span id="weekAutoBadge" class="badge badge-primary">自動排程</span>
+        <select id="globalPhaseSelect" class="select select-inline" aria-label="該週訓練週期"></select>
+      </div>
+    </div>
+
+    <!-- 四大功能頁籤 -->
+    <nav class="nav-tabs" role="tablist">
+      <button class="nav-tab active" data-tab="player">
+        <div class="tab-title">球員訓練端</div>
+        <div class="tab-sub">每日課表打卡、實測數據、疲勞與疼痛回報</div>
+      </button>
+      <button class="nav-tab" data-tab="coach">
+        <div class="tab-title">教練管理端</div>
+        <div class="tab-sub">排定週課表、新增／修改／刪除項目、全隊監控</div>
+      </button>
+      <button class="nav-tab" data-tab="analytics">
+        <div class="tab-title">訓練統計分析</div>
+        <div class="tab-sub">每週完成率、體能進步趨勢、個人歷史查詢</div>
+      </button>
+      <button class="nav-tab" data-tab="sync">
+        <div class="tab-title">雲端同步與匯出</div>
+        <div class="tab-sub">串接 Google 試算表、CSV／JSON 備份匯出</div>
+      </button>
+    </nav>
+
+    <!-- ==================== TAB 1：球員訓練端 ==================== -->
+    <section id="section-player" class="stack-md">
+      <div class="card flex-between">
+        <div>
+          <h2 id="playerDayTitle" style="margin:0; font-size:16px;"></h2>
+          <p id="playerDaySub" class="text-xs muted" style="margin:4px 0 0;"></p>
+        </div>
+        <div class="flex-row">
+          <select id="playerDaySelect" class="select select-inline"></select>
+          <button id="playerCheckAllBtn" class="btn btn-sm">全部勾選完成</button>
+        </div>
+      </div>
+
+      <div class="grid-player">
+        <!-- 左側：每日課表勾選清單 -->
+        <div class="stack-sm">
+          <div class="flex-between text-xs muted" style="padding:0 2px;">
+            <span id="playerProgressLabel"></span>
+            <span>提醒：主訓練前務必進行 8–10 分鐘動態暖身</span>
+          </div>
+          <div id="playerExerciseList" class="stack-sm"></div>
+        </div>
+
+        <!-- 右側：心得、疲勞度與疼痛不適回報 -->
+        <div class="card stack-md">
+          <div style="border-bottom:1px solid var(--border); padding-bottom:10px;">
+            <h3 style="margin:0; font-size:15px;">當日疲勞、疼痛與心得回報</h3>
+            <p class="text-xs muted" style="margin:3px 0 0;">記錄身體狀況讓教練即時調整訓練量，預防運動傷害</p>
+          </div>
+
+          <div class="stack-sm">
+            <div>
+              <div class="flex-between text-xs" style="margin-bottom:4px;">
+                <span class="muted" style="font-weight:600;">身體疲勞程度（1輕鬆 ～ 10極限）</span>
+                <strong id="fatigueBadge" class="mono" style="color:var(--primary);">6 / 10</strong>
+              </div>
+              <input id="fatigueSlider" type="range" min="1" max="10" value="6" style="width:100%;" />
+            </div>
+
+            <div style="background:var(--surface-alt); border:1px solid var(--border); border-radius:10px; padding:12px;" class="stack-sm">
+              <div class="flex-between">
+                <span class="text-xs" style="font-weight:600;">是否有疼痛或不適情況？</span>
+                <label class="flex-row text-xs" style="cursor:pointer;">
+                  <input id="painToggle" type="checkbox" />
+                  <span id="painStatusText" style="font-weight:700; color:var(--success);">無不適</span>
+                </label>
+              </div>
+              <div id="painDetailArea" class="stack-sm hidden" style="border-top:1px solid var(--border); padding-top:10px;">
+                <div class="text-xs muted">點選不適部位（可複選）：</div>
+                <div id="painPartsContainer" class="flex-row" style="gap:6px;"></div>
+                <input id="painDescInput" class="input" type="text" placeholder="簡述疼痛狀況（例：跨步時右膝前側微酸）" />
+              </div>
+            </div>
+
+            <div>
+              <label class="form-label" for="journalTextarea">今日訓練心得</label>
+              <textarea id="journalTextarea" class="textarea" rows="3" placeholder="寫下今天步伐順暢度、跳繩節奏或體能感受..."></textarea>
+            </div>
+
+            <button id="saveCheckinBtn" class="btn btn-primary" style="width:100%;">儲存今日回饋與打卡</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 2：教練管理端 ==================== -->
+    <section id="section-coach" class="stack-md hidden">
+      <!-- 多週自動排程工具列 -->
+      <div class="card stack-sm">
+        <div class="flex-between">
+          <div>
+            <strong style="font-size:14px;">📅 多週自動排程管理（W1 適應 → W2 基礎 → W3 強化 → W4 檢測循環）</strong>
+            <p class="text-xs muted" style="margin:2px 0 0;">每進入新的一週會自動產生課表與日期並推進週期；您也可提前預排未來週次並針對比賽週微調</p>
+          </div>
+          <div class="flex-row">
+            <button id="generateNext4WeeksBtn" class="btn btn-primary btn-sm">⚡ 一鍵預排未來 4 週</button>
+            <button id="copyWeekToNextBtn" class="btn btn-sm">📋 複製本週課表到下週</button>
+            <button id="resetCurrentWeekBtn" class="btn btn-sm">🔄 重設本週為自動課表</button>
+          </div>
+        </div>
+        <div id="scheduledWeeksPills" class="week-pills"></div>
+      </div>
+
+      <!-- 7日排程快選 -->
+      <div id="coachDayGrid" class="day-grid"></div>
+
+      <!-- 當日課表管理表格 -->
+      <div class="card stack-sm">
+        <div class="flex-between">
+          <div>
+            <h2 id="coachTableHeading" style="margin:0; font-size:16px;"></h2>
+            <p id="coachPhaseHint" class="text-xs muted" style="margin:3px 0 0;"></p>
+          </div>
+          <div class="flex-row">
+            <select id="coachPlayerViewSelect" class="select select-inline" title="檢視該球員完成狀態"></select>
+            <select id="coachCatFilter" class="select select-inline"></select>
+            <button id="addExerciseBtn" class="btn btn-primary btn-sm">＋ 新增訓練項目</button>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>日期及星期</th>
+                <th>訓練分類</th>
+                <th>訓練名稱</th>
+                <th>訓練目的</th>
+                <th>動作說明</th>
+                <th>組數</th>
+                <th>每組次數／時間</th>
+                <th>組間休息</th>
+                <th>強度</th>
+                <th>完成狀態</th>
+                <th>管理操作</th>
+              </tr>
+            </thead>
+            <tbody id="coachTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 全隊球員進度與疼痛監控＋名單管理 -->
+      <div class="card stack-sm">
+        <div class="flex-between">
+          <div>
+            <h3 style="margin:0; font-size:15px;">全隊球員完成狀況與疼痛監控</h3>
+            <p class="text-xs muted" style="margin:2px 0 0;">點擊球員卡片可直接檢視或新增／移除隊員</p>
+          </div>
+          <form id="coachAddPlayerForm" class="flex-row">
+            <input id="coachNewPlayerName" class="input" style="width:150px;" type="text" placeholder="輸入新球員名字" required />
+            <select id="coachNewPlayerLevel" class="select select-inline">
+              <option value="youth">青少年／基礎</option>
+              <option value="varsity" selected>校隊／進階</option>
+              <option value="elite">公開／競技</option>
+            </select>
+            <button type="submit" class="btn btn-sm">＋ 加入球員</button>
+          </form>
+        </div>
+        <div id="coachPlayersGrid" class="grid-3"></div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 3：訓練統計分析 ==================== -->
+    <section id="section-analytics" class="stack-md hidden">
+      <div class="card flex-between">
+        <div>
+          <h2 style="margin:0; font-size:16px;">訓練完成率與體能成長分析</h2>
+          <p class="text-xs muted" style="margin:2px 0 0;">追蹤個人與全隊完成率，並可定期登錄專項體能檢測成績</p>
+        </div>
+        <div class="flex-row">
+          <label class="text-xs muted">分析對象</label>
+          <select id="analyticsPlayerSelect" class="select select-inline"></select>
+          <button id="openFitnessTestBtn" class="btn btn-primary btn-sm">＋ 登錄體能檢測</button>
+        </div>
+      </div>
+
+      <!-- KPI 摘要 -->
+      <div id="analyticsKpiGrid" class="grid-4"></div>
+
+      <!-- 雙圖表 -->
+      <div class="grid-2">
+        <div class="card stack-sm">
+          <div class="flex-between">
+            <div>
+              <h3 style="margin:0; font-size:15px;">全隊每週訓練完成率統計</h3>
+              <p class="text-xs muted" style="margin:2px 0 0;">綠色虛線為每週建議達標門檻（85%）</p>
+            </div>
+          </div>
+          <div class="chart-box"><canvas id="teamBarCanvas"></canvas></div>
+        </div>
+
+        <div class="card stack-sm">
+          <div class="flex-between">
+            <div>
+              <h3 id="trendTitle" style="margin:0; font-size:15px;">球員體能進步趨勢</h3>
+              <p class="text-xs muted" style="margin:2px 0 0;">依歷史檢測日期繪製變化曲線</p>
+            </div>
+            <select id="trendMetricSelect" class="select select-inline">
+              <option value="broadJump">立定跳遠（cm）↑</option>
+              <option value="verticalJump">原地垂直跳（cm）↑</option>
+              <option value="sixPointSec">六點移動步伐（秒）↓</option>
+              <option value="plankSec">核心棒式支撐（秒）↑</option>
+            </select>
+          </div>
+          <div class="chart-box"><canvas id="trendLineCanvas"></canvas></div>
+        </div>
+      </div>
+
+      <!-- 個人訓練歷史查詢 -->
+      <div class="card stack-sm">
+        <div class="flex-between">
+          <div>
+            <h3 style="margin:0; font-size:15px;">個人訓練歷史查詢</h3>
+            <p class="text-xs muted" style="margin:2px 0 0;">依星期、分類與完成狀態篩選實際執行紀錄</p>
+          </div>
+          <div class="flex-row">
+            <select id="histWeekFilter" class="select select-inline mono"></select>
+            <select id="histDayFilter" class="select select-inline"></select>
+            <select id="histCatFilter" class="select select-inline"></select>
+            <select id="histStatusFilter" class="select select-inline">
+              <option value="all">全部狀態</option>
+              <option value="done">已完成</option>
+              <option value="pending">未開始</option>
+            </select>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>日期及星期</th>
+                <th>訓練分類</th>
+                <th>訓練名稱</th>
+                <th>指定目標</th>
+                <th>實際完成次數／時間</th>
+                <th>強度</th>
+                <th>完成狀態</th>
+                <th>當日疲勞與疼痛備註</th>
+              </tr>
+            </thead>
+            <tbody id="historyTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 4：雲端同步與匯出 ==================== -->
+    <section id="section-sync" class="stack-md hidden">
+      <div class="grid-2">
+        <div class="card stack-sm">
+          <h3 style="margin:0; font-size:15px;">☁️ 免費 Google 試算表全隊雲端同步</h3>
+          <p class="text-xs muted" style="margin:0;">
+            留空時網站會自動使用「本機儲存模式」（完全免設定）。若要讓<strong>全隊球員在各自手機輸入名字打卡、教練電腦即時看統計</strong>，請依專案內 <code>README.md</code> 部署免費的 Google Apps Script 並貼上網址：
+          </p>
+          <div>
+            <label class="form-label" for="cloudUrlInput">Google Apps Script Web App 網址</label>
+            <input id="cloudUrlInput" class="input mono" type="url" placeholder="https://script.google.com/macros/s/.../exec" />
+          </div>
+          <div class="flex-row">
+            <button id="saveCloudUrlBtn" class="btn btn-primary btn-sm">儲存並測試連線</button>
+            <button id="pullCloudBtn" class="btn btn-sm">⬇ 從雲端下載最新資料</button>
+            <button id="pushCloudBtn" class="btn btn-sm">⬆ 上傳本機資料至雲端</button>
+          </div>
+          <p id="cloudDiagMsg" class="text-xs muted" style="margin:0;"></p>
+        </div>
+
+        <div class="card stack-sm">
+          <h3 style="margin:0; font-size:15px;">📦 課表與訓練紀錄匯出／還原</h3>
+          <p class="text-xs muted" style="margin:0;">
+            可隨時下載 Excel 相容的 10 欄位標準 CSV 報表，或透過 JSON 完整備份與還原全隊資料。
+          </p>
+          <div class="flex-row">
+            <button id="downloadCsvBtn" class="btn btn-primary btn-sm">⬇ 下載 10 欄位課表 CSV（Excel）</button>
+            <button id="downloadJsonBtn" class="btn btn-sm">⬇ 下載完整備份 JSON</button>
+            <label class="btn btn-sm" style="cursor:pointer;">
+              ⬆ 匯入 JSON 備份
+              <input id="importJsonInput" type="file" accept=".json" class="hidden" />
+            </label>
+          </div>
+          <div style="border-top:1px solid var(--border); padding-top:10px;">
+            <button id="resetDemoBtn" class="btn btn-danger btn-sm">重設為預設羽球示範課表</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ==================== Modal 1：教練新增／修改訓練項目 ==================== -->
+  <div id="exerciseModal" class="modal-backdrop hidden">
+    <div class="modal-card stack-sm">
+      <div class="flex-between" style="border-bottom:1px solid var(--border); padding-bottom:10px;">
+        <strong id="exerciseModalTitle" style="font-size:15px;">新增訓練項目</strong>
+        <button id="closeExerciseModalBtn" class="btn btn-sm">關閉</button>
+      </div>
+      <form id="exerciseForm" class="stack-sm">
+        <input type="hidden" id="editExerciseId" />
+        <div class="grid-2">
+          <div>
+            <label class="form-label">訓練分類</label>
+            <select id="exFormCat" class="select" required></select>
+          </div>
+          <div>
+            <label class="form-label">訓練強度</label>
+            <select id="exFormIntensity" class="select" required>
+              <option value="低">低</option>
+              <option value="中" selected>中</option>
+              <option value="高">高</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label class="form-label">訓練名稱</label>
+          <input id="exFormName" class="input" type="text" required placeholder="例如：六點移動步伐、保加利亞分腿蹲" />
+        </div>
+        <div>
+          <label class="form-label">訓練目的</label>
+          <input id="exFormPurpose" class="input" type="text" required placeholder="說明對羽球表現或運動防護的幫助" />
+        </div>
+        <div>
+          <label class="form-label">動作說明</label>
+          <textarea id="exFormMethod" class="textarea" rows="2" required placeholder="動作步驟與安全提醒"></textarea>
+        </div>
+        <div class="grid-3">
+          <div>
+            <label class="form-label">組數</label>
+            <input id="exFormSets" class="input mono" type="number" min="1" max="15" value="3" required />
+          </div>
+          <div>
+            <label class="form-label">每組次數或時間</label>
+            <input id="exFormReps" class="input" type="text" required placeholder="12 次 或 45 秒" />
+          </div>
+          <div>
+            <label class="form-label">組間休息時間</label>
+            <input id="exFormRest" class="input" type="text" required placeholder="60 秒" />
+          </div>
+        </div>
+        <div class="flex-row" style="justify-content:flex-end; padding-top:8px; border-top:1px solid var(--border);">
+          <button type="button" id="cancelExerciseModalBtn" class="btn btn-sm">取消</button>
+          <button type="submit" class="btn btn-primary btn-sm">儲存項目</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==================== Modal 2：新增體能檢測數據 ==================== -->
+  <div id="fitnessModal" class="modal-backdrop hidden">
+    <div class="modal-card stack-sm">
+      <div class="flex-between" style="border-bottom:1px solid var(--border); padding-bottom:10px;">
+        <strong id="fitnessModalTitle" style="font-size:15px;">登錄體能檢測數據</strong>
+        <button id="closeFitnessModalBtn" class="btn btn-sm">關閉</button>
+      </div>
+      <form id="fitnessForm" class="stack-sm">
+        <div>
+          <label class="form-label">檢測日期（例如 11/28）</label>
+          <input id="ftDate" class="input" type="text" required />
+        </div>
+        <div class="grid-2">
+          <div>
+            <label class="form-label">立定跳遠（cm）</label>
+            <input id="ftBroad" class="input mono" type="number" step="1" required placeholder="240" />
+          </div>
+          <div>
+            <label class="form-label">原地垂直跳（cm）</label>
+            <input id="ftVertical" class="input mono" type="number" step="1" required placeholder="60" />
+          </div>
+        </div>
+        <div class="grid-2">
+          <div>
+            <label class="form-label">六點移動步伐 2 輪（秒）</label>
+            <input id="ftSixPoint" class="input mono" type="number" step="0.1" required placeholder="22.5" />
+          </div>
+          <div>
+            <label class="form-label">核心棒式支撐（秒）</label>
+            <input id="ftPlank" class="input mono" type="number" step="1" required placeholder="120" />
+          </div>
+        </div>
+        <div class="flex-row" style="justify-content:flex-end; padding-top:8px; border-top:1px solid var(--border);">
+          <button type="button" id="cancelFitnessModalBtn" class="btn btn-sm">取消</button>
+          <button type="submit" class="btn btn-primary btn-sm">新增檢測紀錄</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="./config.js"></script>
+  <script src="./data.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>
